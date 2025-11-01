@@ -53,3 +53,4 @@ pnpm-debug.log*
 
 # TypeScript cache (if using TS)
 *.tsbuildinfo
+git 

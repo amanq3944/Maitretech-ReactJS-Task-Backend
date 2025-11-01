@@ -2,52 +2,51 @@ import User from "../models/userModel.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-// Register new user
+const JWT_SECRET = process.env.JWT_SECRET || "change_this";
+
 export const registerUser = async (req, res) => {
   try {
     const { fname, username, password } = req.body;
 
     if (!fname || !username || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
     const existingUser = await User.findOne({ username });
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({ success: false, message: "Username already exists" });
     }
 
-    const user = new User({ fname, username, password });
-    await user.save();
+    const newUser = new User({ fname, username, password });
+    await newUser.save();
 
-    // ✅ Generate JWT token
+    // ✅ Generate token after save (so _id exists)
     const token = jwt.sign(
-      { id: user._id, username: user.username },
+      { id: newUser._id, username: newUser.username },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
-    // ✅ Optional: Save token to DB
-    user.token = token;
-    await user.save();
+    // ✅ Save token in DB
+    newUser.token = token;
+    await newUser.save();
 
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: "User registered successfully",
+      token,
       user: {
-        id: user._id,
-        fname: user.fname,
-        username: user.username,
-        password: user.password,
+        id: newUser._id,
+        fname: newUser.fname,
+        username: newUser.username,
       },
-      token, // ✅ send token in response
     });
   } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Register error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-
-// Login user
 export const loginUser = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -61,15 +60,20 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "User not found" });
     }
 
-    if (user.password !== password) {
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
       return res.status(400).json({ success: false, message: "Incorrect password" });
     }
 
+    // ✅ Generate fresh token on login
     const token = jwt.sign(
       { id: user._id, username: user.username },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
+
+    user.token = token;
+    await user.save();
 
     return res.status(200).json({
       success: true,
